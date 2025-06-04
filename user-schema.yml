@@ -1,0 +1,1757 @@
+openapi: 3.0.0
+
+info:
+  title: User Management API (DRAFT)
+  description: API for creating, retrieving, and updating user information.
+  version: 0.2.0
+  contact:
+    name: API Support Team
+    email: apiSupportTeam@lvnv.com
+    url: https://www.lvnv.com/support
+
+tags:
+  - name: User Management
+    description: Operations related to user management.
+  - name: Authorization
+    description: Operations related to user feature permission management.
+
+servers:
+  - url: https://prod.rest.southcentralus.stellar.app/users
+    description: Production Environment
+  - url: https://staging.rest.southcentralus.stellar.in/users
+    description: Staging Environment
+  - url: https://dev.rest.southcentralus.stellar.dev/users
+    description: Dev Environment
+
+security:
+  - EntrOAuth2ClientCredentials: []
+
+paths:
+  /v1/users:
+    get:
+      summary: Get users list
+      description: |
+        Retrieve a paginated list of users belonging to the same organization as the authenticated Org Admin.
+        Supports filtering, sorting users.
+      operationId: getUsers
+      tags:
+        - User Management
+      parameters:
+        - $ref: "#/components/parameters/AuthorizationHeader"
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 10
+        - name: sortBy
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [fullName, userAccountStatus, primaryRole, lastAuthenticatedAt]
+          description: |
+            Sort the user list by the selected field. Supported values:
+            - `fullName`: User's full name (first + last)
+            - `userAccountStatus`: The user's account status
+            - `primaryRole`: The user's primary role in the organization
+            - `lastAuthenticatedAt`: Timestamp of most recent login
+            Can be used with `sortOrder` to specify ascending or descending order.
+        - name: sortOrder
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: asc
+        - name: fullName
+          in: query
+          required: false
+          schema:
+            type: string
+          description: |
+            Filter users by full name. The full name is a combination of the user's first and last name.
+            Supports case-insensitive partial matching. For example, `fullName=jo` may match users like
+            "John Doe" or "Alice Johnson".
+        - name: userAccountStatus
+          in: query
+          required: false
+          style: form
+          explode: false
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [PENDING, ACTIVE, LOCKED, SUSPENDED, DISABLED]
+          description: |
+            Filter users by one or more account statuses.
+            Multiple statuses can be provided as a comma-separated list, e.g.:
+            `?userAccountStatus=PENDING,LOCKED`.
+        - name: primaryRole
+          in: query
+          required: false
+          style: form
+          explode: false
+          schema:
+            type: array
+            items:
+              type: string
+          description: |
+            Filter users by one or more primary roles. Accepts a comma-separated list, e.g.:
+            `?primaryRole=ADMIN,BASIC_PROGRAMMING_USER`.
+        - name: lastAuthenticatedAt__gte
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: |
+            Filters users authenticated on or after this time.
+            Must be an ISO 8601 datetime string (e.g., `2024-04-27T10:30:00Z`).
+
+        - name: lastAuthenticatedAt__lt
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: |
+            Filters users authenticated before this time.
+            Must be an ISO 8601 datetime string.
+      responses:
+        "200":
+          description: Successfully retrieved the user list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserListResponse"
+
+        "400": { $ref: "../../lib/commonResponses.yml#/components/responses/BadRequest" }
+        "401": { $ref: "../../lib/commonResponses.yml#/components/responses/Unauthorized" }
+        "403": { $ref: "../../lib/commonResponses.yml#/components/responses/Forbidden" }
+        # no 404 because this endpoint returns a collection, not a single resource
+        "406": { $ref: "../../lib/commonResponses.yml#/components/responses/NotAcceptable" }
+        # no 409 because this endpoint does not involve resource creation or updates
+        # no 412 because no ETag or precondition headers are used
+        "422": { $ref: "../../lib/commonResponses.yml#/components/responses/UnprocessableContent" }
+        "429": { $ref: "../../lib/commonResponses.yml#/components/responses/TooManyRequests" }
+        "500": { $ref: "../../lib/commonResponses.yml#/components/responses/InternalServerError" }
+
+    post:
+      summary: Create a new user
+      description: Create a new user with the specified details.
+      operationId: createUser
+      tags:
+        - User Management
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUserRequest"
+      responses:
+        "201":
+          description: User created successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GetUserResponse"
+        "400": { $ref: "../../lib/commonResponses.yml#/components/responses/BadRequest" }
+        "401": { $ref: "../../lib/commonResponses.yml#/components/responses/Unauthorized" }
+        "403": { $ref: "../../lib/commonResponses.yml#/components/responses/Forbidden" }
+        # no 404 because not fetching a resource
+        "406": { $ref: "../../lib/commonResponses.yml#/components/responses/NotAcceptable" }
+        # no 409 because not checking for conflicts
+        # no 412 because not updating a resource with Etag
+        "422": { $ref: "../../lib/commonResponses.yml#/components/responses/UnprocessableContent" }
+        "429": { $ref: "../../lib/commonResponses.yml#/components/responses/TooManyRequests" }
+        "500": { $ref: "../../lib/commonResponses.yml#/components/responses/InternalServerError" }
+
+  /v1/users/{userId}:
+    get:
+      summary: Get user information
+      description: Retrieve the details of a specific user by their ID.
+      operationId: getUser
+      tags:
+        - User Management
+      parameters:
+        - $ref: "#/components/parameters/UserIDPathParam"
+      responses:
+        "200":
+          description: User retrieved successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GetUserResponse"
+        "400": { $ref: "../../lib/commonResponses.yml#/components/responses/BadRequest" }
+        "401": { $ref: "../../lib/commonResponses.yml#/components/responses/Unauthorized" }
+        "403": { $ref: "../../lib/commonResponses.yml#/components/responses/Forbidden" }
+        "404": { $ref: "../../lib/commonResponses.yml#/components/responses/NotFound" }
+        "406": { $ref: "../../lib/commonResponses.yml#/components/responses/NotAcceptable" }
+        # no 409 because not checking for conflicts
+        # no 412 because not updating a resource with Etag
+        "422": { $ref: "../../lib/commonResponses.yml#/components/responses/UnprocessableContent" }
+        "429": { $ref: "../../lib/commonResponses.yml#/components/responses/TooManyRequests" }
+        "500": { $ref: "../../lib/commonResponses.yml#/components/responses/InternalServerError" }
+
+    patch:
+      summary: Update user information
+      description: |
+        Update the details of an existing user.
+        To disable a user just send `userAccountStatus` with `"DISABLED"` value in the request body.
+      operationId: updateUser
+      tags:
+        - User Management
+      parameters:
+        - $ref: "#/components/parameters/UserIDPathParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserRequest"
+            examples:
+              regularUpdate:
+                summary: Regular user update request
+                value:
+                  firstName: "John"
+                  lastName: "Doe"
+                  email: "john.doe@example.com"
+                  userType: "REGULAR"
+                  userAccountStatus: "ACTIVE"
+              disableUser:
+                summary: Request to disable a user
+                value:
+                  userAccountStatus: "DISABLED"
+      responses:
+        "200":
+          description: User updated successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GetUserResponse"
+        "400": { $ref: "../../lib/commonResponses.yml#/components/responses/BadRequest" }
+        "401": { $ref: "../../lib/commonResponses.yml#/components/responses/Unauthorized" }
+        "403": { $ref: "../../lib/commonResponses.yml#/components/responses/Forbidden" }
+        "404": { $ref: "../../lib/commonResponses.yml#/components/responses/NotFound" }
+        "406": { $ref: "../../lib/commonResponses.yml#/components/responses/NotAcceptable" }
+        # no 409 because not checking for conflicts
+        "412": { $ref: "../../lib/commonResponses.yml#/components/responses/PreconditionFailed" }
+        "422": { $ref: "../../lib/commonResponses.yml#/components/responses/UnprocessableContent" }
+        "429": { $ref: "../../lib/commonResponses.yml#/components/responses/TooManyRequests" }
+        "500": { $ref: "../../lib/commonResponses.yml#/components/responses/InternalServerError" }
+
+  /v1/users/{userId}/mfa:
+    delete:
+      summary: Remove MFA configuration for a User
+      description: >
+        Removes any configured multi-factor authentication (MFA) methods (e.g., TOTP or SMS) for the specified User.
+        This action disables MFA for the user, requiring them to reconfigure MFA if needed in the future.
+      operationId: removeUserMfa
+      tags:
+        - User Management
+      parameters:
+        - $ref: "#/components/parameters/UserIDPathParam"
+      responses:
+        "204":
+          description: MFA configuration removed successfully. No content is returned.
+        "400": { $ref: "../../lib/commonResponses.yml#/components/responses/BadRequest" }
+        "401": { $ref: "../../lib/commonResponses.yml#/components/responses/Unauthorized" }
+        "403": { $ref: "../../lib/commonResponses.yml#/components/responses/Forbidden" }
+        "404": { $ref: "../../lib/commonResponses.yml#/components/responses/NotFound" }
+        "406": { $ref: "../../lib/commonResponses.yml#/components/responses/NotAcceptable" }
+        # no 409 because not checking for conflicts
+        "422": { $ref: "../../lib/commonResponses.yml#/components/responses/UnprocessableContent" }
+        "429": { $ref: "../../lib/commonResponses.yml#/components/responses/TooManyRequests" }
+        "500": { $ref: "../../lib/commonResponses.yml#/components/responses/InternalServerError" }
+
+  /v1/claims/clinician-app:
+    get:
+      summary: Get feature permissions for a user
+      description: Retrieve a list of feature permissions allowed for a user.
+      operationId: getUserFeaturePermissions
+
+      tags:
+        - Authorization
+
+      security:
+        - EntrOAuth2ClientCredentials:
+            - UserClaims.ReadAll
+
+      parameters:
+        - $ref: "#/components/parameters/AuthorizationHeader"
+        - $ref: "#/components/parameters/UserAgentHeader"
+        - $ref: "#/components/parameters/UserOrganizationId"
+        - $ref: "#/components/parameters/TabletOrganizationId"
+        - $ref: "#/components/parameters/Auth0UserId"
+      responses:
+        "200":
+          description: Successfully retrieved the list of feature permissions.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserPermissionsResponse"
+        "400": { $ref: "../../lib/commonResponses.yml#/components/responses/BadRequest" }
+        "401": { $ref: "../../lib/commonResponses.yml#/components/responses/Unauthorized" }
+        "403": { $ref: "../../lib/commonResponses.yml#/components/responses/Forbidden" }
+        "404": { $ref: "../../lib/commonResponses.yml#/components/responses/NotFound" }
+        "406": { $ref: "../../lib/commonResponses.yml#/components/responses/NotAcceptable" }
+        # no 409 because not checking for conflicts
+        # no 412 because not updating a resource with Etag
+        "422": { $ref: "../../lib/commonResponses.yml#/components/responses/UnprocessableContent" }
+        "429": { $ref: "../../lib/commonResponses.yml#/components/responses/TooManyRequests" }
+        "500": { $ref: "../../lib/commonResponses.yml#/components/responses/InternalServerError" }
+  /v1/claims/clinician-portal:
+    get:
+      summary: Get claims for clinician portal user
+      description: Provide the claims which includes permissions allowed for a user, organization details, and roles.
+      operationId: getClinicianPortalClaims
+
+      tags:
+        - Authorization
+
+      security:
+        - EntrOAuth2ClientCredentials:
+            - UserClaims.ReadAll
+
+      parameters:
+        - $ref: "#/components/parameters/AuthorizationHeader"
+        - $ref: "#/components/parameters/UserOrganizationId"
+        - $ref: "#/components/parameters/Auth0UserId"
+      responses:
+        "200":
+          description: Successfully retrieved the claims for the user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClinicianPortalClaimsResponse"
+        "400": { $ref: "../../lib/commonResponses.yml#/components/responses/BadRequest" }
+        "401": { $ref: "../../lib/commonResponses.yml#/components/responses/Unauthorized" }
+        "403": { $ref: "../../lib/commonResponses.yml#/components/responses/Forbidden" }
+        "404": { $ref: "../../lib/commonResponses.yml#/components/responses/NotFound" }
+        "406": { $ref: "../../lib/commonResponses.yml#/components/responses/NotAcceptable" }
+        # no 409 because not checking for conflicts
+        # no 412 because not updating a resource with Etag
+        "422": { $ref: "../../lib/commonResponses.yml#/components/responses/UnprocessableContent" }
+        "429": { $ref: "../../lib/commonResponses.yml#/components/responses/TooManyRequests" }
+        "500": { $ref: "../../lib/commonResponses.yml#/components/responses/InternalServerError" }
+
+  /v1/user-organizations:
+    get:
+      summary: Get user organizations using auth0UserId
+      description: Retrieve the list of organizations associated with a user using their Auth0 ID.
+      operationId: getUserOrganizations
+      tags:
+        - User Management
+      parameters:
+        - $ref: "#/components/parameters/AuthorizationHeader"
+        - $ref: "#/components/parameters/Auth0UserId"
+      responses:
+        "200":
+          description: User retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: array
+                description: List of user organizations.
+                items:
+                  $ref: "#/components/schemas/UserOrganizationItem"
+        "400": { $ref: "../../lib/commonResponses.yml#/components/responses/BadRequest" }
+        "401": { $ref: "../../lib/commonResponses.yml#/components/responses/Unauthorized" }
+        "403": { $ref: "../../lib/commonResponses.yml#/components/responses/Forbidden" }
+        "404": { $ref: "../../lib/commonResponses.yml#/components/responses/NotFound" }
+        "406": { $ref: "../../lib/commonResponses.yml#/components/responses/NotAcceptable" }
+        # no 409 because not checking for conflicts
+        # no 412 because not updating a resource with Etag
+        "422": { $ref: "../../lib/commonResponses.yml#/components/responses/UnprocessableContent" }
+        "429": { $ref: "../../lib/commonResponses.yml#/components/responses/TooManyRequests" }
+        "500": { $ref: "../../lib/commonResponses.yml#/components/responses/InternalServerError" }
+
+  /v1/users/{userId}/organizations/{organizationId}/secondary-roles/organization-admin:
+    post:
+      summary: Assign Organization Admin Role
+      description: |
+        Assign the "Organization Admin" role to a user in the specified organization.
+      operationId: assignOrganizationAdminRole
+      tags:
+        - User Management
+      parameters:
+        - $ref: "#/components/parameters/UserIDPathParam"
+        - $ref: "#/components/parameters/OrganizationIdPathParam"
+        - $ref: "#/components/parameters/AuthorizationHeader"
+      responses:
+        "201":
+          description: Admin role assigned successfully.
+        "400": { $ref: "../../lib/commonResponses.yml#/components/responses/BadRequest" }
+        "401": { $ref: "../../lib/commonResponses.yml#/components/responses/Unauthorized" }
+        "403": { $ref: "../../lib/commonResponses.yml#/components/responses/Forbidden" }
+        "404": { $ref: "../../lib/commonResponses.yml#/components/responses/NotFound" }
+        "406": { $ref: "../../lib/commonResponses.yml#/components/responses/NotAcceptable" }
+        "422": { $ref: "../../lib/commonResponses.yml#/components/responses/UnprocessableContent" }
+        "429": { $ref: "../../lib/commonResponses.yml#/components/responses/TooManyRequests" }
+        "500": { $ref: "../../lib/commonResponses.yml#/components/responses/InternalServerError" }
+    delete:
+      summary: Remove Organization Admin Role
+      description: Remove the "Organization Admin" role from a user.
+      operationId: removeOrganizationAdminRole
+      tags:
+        - User Management
+      parameters:
+        - $ref: "#/components/parameters/UserIDPathParam"
+        - $ref: "#/components/parameters/OrganizationIdPathParam"
+        - $ref: "#/components/parameters/AuthorizationHeader"
+      responses:
+        "200":
+          description: Organization Admin privileges are removed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Organization Admin privileges are removed successfully"
+        "400": { $ref: "../../lib/commonResponses.yml#/components/responses/BadRequest" }
+        "401": { $ref: "../../lib/commonResponses.yml#/components/responses/Unauthorized" }
+        "403": { $ref: "../../lib/commonResponses.yml#/components/responses/Forbidden" }
+        "404": { $ref: "../../lib/commonResponses.yml#/components/responses/NotFound" }
+        "406": { $ref: "../../lib/commonResponses.yml#/components/responses/NotAcceptable" }
+        "422": { $ref: "../../lib/commonResponses.yml#/components/responses/UnprocessableContent" }
+        "429": { $ref: "../../lib/commonResponses.yml#/components/responses/TooManyRequests" }
+        "500": { $ref: "../../lib/commonResponses.yml#/components/responses/InternalServerError" }
+  /v1/users/{userId}/organizations/{organizationId}:
+    delete:
+      summary: Remove User from Organization
+      description: |
+        Remove a user from a specific organization by revoking all roles and disassociating the user.
+      operationId: removeUserFromOrganization
+      tags:
+        - User Management
+      parameters:
+        - $ref: "#/components/parameters/UserIDPathParam"
+        - $ref: "#/components/parameters/OrganizationIdPathParam"
+        - $ref: "#/components/parameters/AuthorizationHeader"
+      responses:
+        "200":
+          description: User removed from the organization successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "User removed from the organization successfully"
+        "400": { $ref: "../../lib/commonResponses.yml#/components/responses/BadRequest" }
+        "401": { $ref: "../../lib/commonResponses.yml#/components/responses/Unauthorized" }
+        "403": { $ref: "../../lib/commonResponses.yml#/components/responses/Forbidden" }
+        "404": { $ref: "../../lib/commonResponses.yml#/components/responses/NotFound" }
+        "406": { $ref: "../../lib/commonResponses.yml#/components/responses/NotAcceptable" }
+        # no 409 because not checking for conflicts
+        "412": { $ref: "../../lib/commonResponses.yml#/components/responses/PreconditionFailed" }
+        "422": { $ref: "../../lib/commonResponses.yml#/components/responses/UnprocessableContent" }
+        "429": { $ref: "../../lib/commonResponses.yml#/components/responses/TooManyRequests" }
+        "500": { $ref: "../../lib/commonResponses.yml#/components/responses/InternalServerError" }
+  /v1/users/{userId}/suspend:
+    post:
+      summary: Suspend User Account
+      description: |
+        Suspends a user account, preventing the user from accessing the system while preserving their account data.
+        A suspended account can be unsuspended later.
+      operationId: suspendUser
+      tags:
+        - User Management
+      parameters:
+        - $ref: "#/components/parameters/UserIDPathParam"
+      responses:
+        "200":
+          description: User account suspended successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GetUserResponse"
+        "400": { $ref: "../../lib/commonResponses.yml#/components/responses/BadRequest" }
+        "401": { $ref: "../../lib/commonResponses.yml#/components/responses/Unauthorized" }
+        "403": { $ref: "../../lib/commonResponses.yml#/components/responses/Forbidden" }
+        "404": { $ref: "../../lib/commonResponses.yml#/components/responses/NotFound" }
+        "406": { $ref: "../../lib/commonResponses.yml#/components/responses/NotAcceptable" }
+        # no 409 because not checking for conflicts
+        "412": { $ref: "../../lib/commonResponses.yml#/components/responses/PreconditionFailed" }
+        "422": { $ref: "../../lib/commonResponses.yml#/components/responses/UnprocessableContent" }
+        "429": { $ref: "../../lib/commonResponses.yml#/components/responses/TooManyRequests" }
+        "500": { $ref: "../../lib/commonResponses.yml#/components/responses/InternalServerError" }
+  /v1/users/{userId}/unsuspend:
+    post:
+      summary: Unsuspend User Account
+      description: |
+        Unsuspends a previously suspended user account, restoring the user's access to the system.
+      operationId: unsuspendUser
+      tags:
+        - User Management
+      parameters:
+        - $ref: "#/components/parameters/UserIDPathParam"
+      responses:
+        "200":
+          description: User account unsuspended successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GetUserResponse"
+        "400": { $ref: "../../lib/commonResponses.yml#/components/responses/BadRequest" }
+        "401": { $ref: "../../lib/commonResponses.yml#/components/responses/Unauthorized" }
+        "403": { $ref: "../../lib/commonResponses.yml#/components/responses/Forbidden" }
+        "404": { $ref: "../../lib/commonResponses.yml#/components/responses/NotFound" }
+        "406": { $ref: "../../lib/commonResponses.yml#/components/responses/NotAcceptable" }
+        # no 409 because not checking for conflicts
+        "412": { $ref: "../../lib/commonResponses.yml#/components/responses/PreconditionFailed" }
+        "422": { $ref: "../../lib/commonResponses.yml#/components/responses/UnprocessableContent" }
+        "429": { $ref: "../../lib/commonResponses.yml#/components/responses/TooManyRequests" }
+        "500": { $ref: "../../lib/commonResponses.yml#/components/responses/InternalServerError" }
+  /v1/invite-contact:
+    post:
+      summary: Batch API call to invite contacts in the organization
+      description: Invite multiple contacts in a single API call.
+      operationId: batchInviteContacts
+      requestBody:
+        description: Payload for inviting contacts.
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                contacts:
+                  type: array
+                  description: A list of contact objects to invite.
+                  items:
+                    type: object
+                    properties:
+                      firstName:
+                        type: string
+                        description: The first name of the contact.
+                        example: John
+                      lastName:
+                        type: string
+                        description: The last name of the contact.
+                        example: Doe
+                      email:
+                        type: string
+                        description: The email of the contact.
+                        format: email
+                        example: john.doe@example.com
+                      primaryRole:
+                        $ref: "#/components/schemas/PrimaryRole"
+                    required:
+                      - firstName
+                      - lastName
+                      - email
+                      - primaryRole
+              required:
+                - contacts
+      responses:
+        "200":
+          description: Request processed successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    description: List of results, one for each contact processed.
+                    items:
+                      $ref: "#/components/schemas/InviteContactResponse"
+        "207":
+          description: Partial success, when some records succeed and others fail.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    description: List of results, one for each contact processed.
+                    items:
+                      items:
+                        $ref: "#/components/schemas/InviteContactResponse"
+        "400": { $ref: "../../lib/commonResponses.yml#/components/responses/BadRequest" }
+        "401": { $ref: "../../lib/commonResponses.yml#/components/responses/Unauthorized" }
+        "403": { $ref: "../../lib/commonResponses.yml#/components/responses/Forbidden" }
+        "422": { $ref: "../../lib/commonResponses.yml#/components/responses/UnprocessableContent" }
+        "429": { $ref: "../../lib/commonResponses.yml#/components/responses/TooManyRequests" }
+        "500": { $ref: "../../lib/commonResponses.yml#/components/responses/InternalServerError" }
+  /v1/logout:
+    post:
+      tags:
+        - Authentication
+      summary: Hard logout from application and Auth0
+      description: |
+        This endpoint revokes the user's session and logs them out of Auth0.
+        It acts as a proxy to Auth0’s `/v2/sessions/{id}/revoke` endpoints.
+      operationId: logoutUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LogoutRequest"
+      responses:
+        "204":
+          description: Logout successful – no content returned
+        "400": { $ref: "../../lib/commonResponses.yml#/components/responses/BadRequest" }
+        "401": { $ref: "../../lib/commonResponses.yml#/components/responses/Unauthorized" }
+        "403": { $ref: "../../lib/commonResponses.yml#/components/responses/Forbidden" }
+        # no 404 because because not fetching a resource
+        "406": { $ref: "../../lib/commonResponses.yml#/components/responses/NotAcceptable" }
+        # no 412 because not updating a resource with Etag
+        "422": { $ref: "../../lib/commonResponses.yml#/components/responses/UnprocessableContent" }
+        "429": { $ref: "../../lib/commonResponses.yml#/components/responses/TooManyRequests" }
+        "500": { $ref: "../../lib/commonResponses.yml#/components/responses/InternalServerError" }
+  /sessions/{sessionId}:
+    put:
+      summary: Create or update session information
+      operationId: upsertSessionDetails
+      tags:
+        - Session Management
+      parameters:
+        - $ref: "#/components/parameters/AuthorizationHeader"
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+            maxLength: 256
+          description: Unique identifier for the session being created or updated.
+          example: "session1234567890"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Session"
+            examples:
+              regularSession:
+                summary: Example session info
+                value:
+                  auth0UserId: "auth0|67a0dab42415e5dee412d8c1"
+                  organizationId: "123e4567-e89b-12d3-a456-426614174000"
+                  lastUserAgent: "Mozilla/5.0 (Linux; Android 13; SM-T638U Build/TP1A.220624.014; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/132.0.6834.166 Safari/537.36 LivaNova-M3100/2.0 (Android 13; SM-T638U)"
+                  lastIpAddress: "195.56.119.209"
+                  lastInteractedAt: "2023-12-31T12:00:00Z"
+      responses:
+        "200":
+          description: Session info created or updated successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Session info created or updated successfully."
+        "400": { $ref: "../../lib/commonResponses.yml#/components/responses/BadRequest" }
+        "401": { $ref: "../../lib/commonResponses.yml#/components/responses/Unauthorized" }
+        "403": { $ref: "../../lib/commonResponses.yml#/components/responses/Forbidden" }
+        "404": { $ref: "../../lib/commonResponses.yml#/components/responses/NotFound" }
+        "406": { $ref: "../../lib/commonResponses.yml#/components/responses/NotAcceptable" }
+        # no 409 because not checking for conflicts
+        "422": { $ref: "../../lib/commonResponses.yml#/components/responses/UnprocessableContent" }
+        "429": { $ref: "../../lib/commonResponses.yml#/components/responses/TooManyRequests" }
+        "500": { $ref: "../../lib/commonResponses.yml#/components/responses/InternalServerError" }
+    delete:
+      summary: Delete session info using sessionId
+      description: Delete session information for a user using their session ID.
+      operationId: deleteSessionInfo
+      tags:
+        - Session Management
+      parameters:
+        - $ref: "#/components/parameters/AuthorizationHeader"
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+            maxLength: 256
+          description: Unique identifier for the session being deleted.
+          example: "session1234567890"
+      responses:
+        "200":
+          description: Session info deleted successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Session info deleted successfully."
+        "400": { $ref: "../../lib/commonResponses.yml#/components/responses/BadRequest" }
+        "401": { $ref: "../../lib/commonResponses.yml#/components/responses/Unauthorized" }
+        "403": { $ref: "../../lib/commonResponses.yml#/components/responses/Forbidden" }
+        "404": { $ref: "../../lib/commonResponses.yml#/components/responses/NotFound" }
+        "406": { $ref: "../../lib/commonResponses.yml#/components/responses/NotAcceptable" }
+        "422": { $ref: "../../lib/commonResponses.yml#/components/responses/UnprocessableContent" }
+        "429": { $ref: "../../lib/commonResponses.yml#/components/responses/TooManyRequests" }
+        "500": { $ref: "../../lib/commonResponses.yml#/components/responses/InternalServerError" }
+  /sessions:
+    get:
+      summary: Get session info using organizationId and auth0UserId
+      description: Retrieve session information for a user using their organization ID and Auth0 ID.
+      operationId: getSessionInfo
+      tags:
+        - Session Management
+      parameters:
+        - $ref: "#/components/parameters/AuthorizationHeader"
+        - name: auth0UserId
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 256
+            pattern: '^[a-z0-9-]+\\|[a-z0-9]{24}$'
+          example: "auth0|67a0dab42415e5dee412d8c1"
+          description: Optional for admin filtering. Injected automatically for non-admin users.
+        - $ref: "#/components/parameters/UserOrganizationId"
+      responses:
+        "200":
+          description: Session info retrieved successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionList"
+        "400": { $ref: "../../lib/commonResponses.yml#/components/responses/BadRequest" }
+        "401": { $ref: "../../lib/commonResponses.yml#/components/responses/Unauthorized" }
+        "403": { $ref: "../../lib/commonResponses.yml#/components/responses/Forbidden" }
+        "404": { $ref: "../../lib/commonResponses.yml#/components/responses/NotFound" }
+        "406": { $ref: "../../lib/commonResponses.yml#/components/responses/NotAcceptable" }
+        "422": { $ref: "../../lib/commonResponses.yml#/components/responses/UnprocessableContent" }
+        "429": { $ref: "../../lib/commonResponses.yml#/components/responses/TooManyRequests" }
+        "500": { $ref: "../../lib/commonResponses.yml#/components/responses/InternalServerError" }
+
+  /v1/users/{userId}/organizations/{organizationId}/reinvite:
+    post:
+      summary: Re-invite the user to the organization
+      description: Re-sends the invitation for a user to associate with the given organization.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          description: The unique identifier of the user to be re-invited.
+          schema:
+            type: string
+        - name: organizationId
+          in: path
+          required: true
+          description: The unique identifier of the organization associated with the user.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successfully re-sent the invitation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InviteContactResponse"
+        "400": { $ref: "../../lib/commonResponses.yml#/components/responses/BadRequest" }
+        "401": { $ref: "../../lib/commonResponses.yml#/components/responses/Unauthorized" }
+        "403": { $ref: "../../lib/commonResponses.yml#/components/responses/Forbidden" }
+        "404": { $ref: "../../lib/commonResponses.yml#/components/responses/NotFound" }
+        "406": { $ref: "../../lib/commonResponses.yml#/components/responses/NotAcceptable" }
+        "422": { $ref: "../../lib/commonResponses.yml#/components/responses/UnprocessableContent" }
+        "429": { $ref: "../../lib/commonResponses.yml#/components/responses/TooManyRequests" }
+        "500": { $ref: "../../lib/commonResponses.yml#/components/responses/InternalServerError" }
+
+  /v1/users/{userId}/pin/status:
+    get:
+      summary: Retrieve User PIN Status
+      description: >
+        Retrieves the PIN status (`configured` or `unconfigured`) for the user specified by their `userId`.
+        Used to query the database and inform users about their PIN-based authentication configuration.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          description: The unique identifier of the user.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: PIN status successfully retrieved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PinStatusResponse"
+        "400": { $ref: "../../lib/commonResponses.yml#/components/responses/BadRequest" }
+        "401": { $ref: "../../lib/commonResponses.yml#/components/responses/Unauthorized" }
+        "403": { $ref: "../../lib/commonResponses.yml#/components/responses/Forbidden" }
+        "404": { $ref: "../../lib/commonResponses.yml#/components/responses/NotFound" }
+        "406": { $ref: "../../lib/commonResponses.yml#/components/responses/NotAcceptable" }
+        "422": { $ref: "../../lib/commonResponses.yml#/components/responses/UnprocessableContent" }
+        "429": { $ref: "../../lib/commonResponses.yml#/components/responses/TooManyRequests" }
+        "500": { $ref: "../../lib/commonResponses.yml#/components/responses/InternalServerError" }
+  /v1/users/{userId}/pin:
+    post:
+      summary: Configure a new PIN
+      description: >
+        Allows the authenticated user to configure a 6-digit numeric PIN for quick authentication,
+        provided organizational policies allow PIN re-authentication.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          description: Unique identifier of the user configuring the PIN.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        description: A valid 6-digit numeric PIN to configure.
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PinConfigureRequest"
+      responses:
+        "204":
+          description: PIN configured successfully. No content is returned.
+        "401": { $ref: "../../lib/commonResponses.yml#/components/responses/Unauthorized" }
+        "403": { $ref: "../../lib/commonResponses.yml#/components/responses/Forbidden" }
+        "404": { $ref: "../../lib/commonResponses.yml#/components/responses/NotFound" }
+        "406": { $ref: "../../lib/commonResponses.yml#/components/responses/NotAcceptable" }
+        "422": { $ref: "../../lib/commonResponses.yml#/components/responses/UnprocessableContent" }
+        "429": { $ref: "../../lib/commonResponses.yml#/components/responses/TooManyRequests" }
+        "500": { $ref: "../../lib/commonResponses.yml#/components/responses/InternalServerError" }
+    put:
+      summary: Update an existing PIN
+      description: >
+        Allows the authenticated user to update their current PIN by validating the old PIN and securely configuring a
+        new one. Ensures compliance with organizational policies and proper authentication by validating the old PIN.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          description: Unique identifier of the user updating the PIN.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        description: Current PIN and new PIN required for updating PIN.
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PinChangeRequest"
+      responses:
+        "204":
+          description: PIN updated successfully. No content is returned.
+        "401": { $ref: "../../lib/commonResponses.yml#/components/responses/Unauthorized" }
+        "403": { $ref: "../../lib/commonResponses.yml#/components/responses/Forbidden" }
+        "404": { $ref: "../../lib/commonResponses.yml#/components/responses/NotFound" }
+        "406": { $ref: "../../lib/commonResponses.yml#/components/responses/NotAcceptable" }
+        "422": { $ref: "../../lib/commonResponses.yml#/components/responses/UnprocessableContent" }
+        "429": { $ref: "../../lib/commonResponses.yml#/components/responses/TooManyRequests" }
+        "500": { $ref: "../../lib/commonResponses.yml#/components/responses/InternalServerError" }
+
+  /v1/users/lock:
+    post:
+      summary: Handle User Lock Event
+      description: |
+        This webhook endpoint is triggered when a user is locked in Auth0 due to exceeding the failed login threshold.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebhookPayload'
+      responses:
+        '200':
+          description: Successfully processed the user lock event.
+        '400': { $ref: "../../lib/commonResponses.yml#/components/responses/BadRequest" }
+        '500': { $ref: "../../lib/commonResponses.yml#/components/responses/InternalServerError" }
+
+  /v1/users/unlock:
+    post:
+      summary: Handle User Unlock Event
+      description: |
+        This webhook endpoint is triggered when a user successfully resets their password in Auth0 or clicks on the 
+        unblock email link after their account is locked due to failed login attempts.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebhookPayload'
+      responses:
+        '200':
+          description: Successfully processed user unlock event.
+        '400': { $ref: "../../lib/commonResponses.yml#/components/responses/BadRequest" }
+        '500': { $ref: "../../lib/commonResponses.yml#/components/responses/InternalServerError" }
+
+  /v1/users/{userId}/organization-settings/{organizationId}:
+    get:
+      summary: Get the User Organization settings
+      description: Retrieve the User's Organization settings, including the Total Number of Admin users (`currentNumberOfAdmins`) in the Organization.
+      operationId: getUserOrganizationSettings
+      tags:
+        - User Organization Settings
+      parameters:
+        - $ref: "#/components/parameters/UserIDPathParam"
+        - $ref: "#/components/parameters/OrganizationIdPathParam"
+        - $ref: "#/components/parameters/AuthorizationHeader"
+      responses:
+        "200":
+          description: Successfully retrieved the User's Organization settings.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrganizationSettingsResponse"
+        "400": { $ref: "../../lib/commonResponses.yml#/components/responses/BadRequest" }
+        "401": { $ref: "../../lib/commonResponses.yml#/components/responses/Unauthorized" }
+        "403": { $ref: "../../lib/commonResponses.yml#/components/responses/Forbidden" }
+        "404": { $ref: "../../lib/commonResponses.yml#/components/responses/NotFound" }
+        "406": { $ref: "../../lib/commonResponses.yml#/components/responses/NotAcceptable" }
+        # no 409 because this endpoint does not involve resource creation or updates
+        # no 422 this GET request does not have a body
+        "429": { $ref: "../../lib/commonResponses.yml#/components/responses/TooManyRequests" }
+        "500": { $ref: "../../lib/commonResponses.yml#/components/responses/InternalServerError" }
+
+components:
+  securitySchemes:
+    EntrOAuth2ClientCredentials:
+      type: oauth2
+      description: "OAuth 2.0 Client Credentials Flow for JWT validation"
+      flows:
+        clientCredentials:
+          tokenUrl: /oauth2/v2.0/token
+          #- Development tokenUrl - https://login.microsoftonline.com/5ff6a70e-87c0-4a54-99f8-8ec33ed8fc2e/oauth2/v2.0/token
+          scopes:
+            UserClaims.ReadAll: "Read user claims"
+            User.ReadAll: "Read user details"
+
+  parameters:
+    AuthorizationHeader:
+      name: Authorization
+      in: header
+      required: true
+      schema:
+        type: string
+        example: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+      description: "JWT access token obtained from the OAuth2 client credentials flow."
+    UserAgentHeader:
+      name: User-Agent
+      in: header
+      required: true
+      schema:
+        type: string
+        maxLength: 256
+      example: "ClinicianApp/1.0 (Android; rv:13)"
+      description: Identifies the client application, operating system, and/or version of the requesting user agent.
+    UserIDPathParam:
+      name: userId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      example: "123e4567-e89b-12d3-a456-426614174000"
+      description: Unique identifier of the user to be updated.
+    Auth0UserId:
+      name: auth0UserId
+      in: query
+      required: true
+      schema:
+        type: string
+        maxLength: 256
+        pattern: '^[a-z0-9-]+\\|[a-z0-9]{24}$'
+      example: "auth0|67a0dab42415e5dee412d8c1"
+      description: Unique identifier for the Auth0 user.
+    UserOrganizationId:
+      name: userOrganizationId
+      in: query
+      required: true
+      schema:
+        type: string
+        format: uuid
+      example: "123e4567-e89b-12d3-a456-426614174000"
+      description: Unique identifier for the user's organization.
+    TabletOrganizationId:
+      name: tabletOrganizationId
+      in: query
+      required: false
+      schema:
+        type: string
+        format: uuid
+      example: "123e4567-e89b-12d3-a456-426614174000"
+      description: Unique identifier for the tablet's organization.
+    SessionId:
+      name: sessionId
+      in: query
+      required: true
+      schema:
+        type: string
+        maxLength: 256
+      example: "E4ucZWYtZ5Akn5SgRHXsYkisANfXKRUp"
+      description: "Unique identifier for the session."
+    OrganizationIdPathParam:
+      name: organizationId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      example: "123e4567-e89b-12d3-a456-426614174000"
+      description: "Unique identifier of the organization"
+  schemas:
+    BaseUserRequest:
+      type: object
+      description: "Request to create a new user in the system."
+      additionalProperties: false
+      properties:
+        name:
+          $ref: "#/components/schemas/UserName"
+        email:
+          type: string
+          format: email
+          pattern: '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+          description: "Unique email address of the user."
+          example: "john.doe@example.com"
+        providerId:
+          type: string
+          maxLength: 255
+          description: "The providerId (e.g. NPI) is a unique identifier number."
+          example: "1234567890"
+        address:
+          $ref: "#/components/schemas/Address"
+        phoneNumbers:
+          $ref: "#/components/schemas/PhoneNumbers"
+        userType:
+          type: string
+          maxLength: 256
+          description: "Specifies the category of the user, either as a healthcare provider or a patient."
+          enum:
+            - PROVIDER
+            - PATIENT
+          example: "PROVIDER"
+        primaryRoles:
+          $ref: "#/components/schemas/PrimaryRoles"
+        trainingRecords:
+          type: array
+          description: "List of training records."
+          items:
+            $ref: "#/components/schemas/TrainingRecords"
+        mfaContactMethod:
+          type: string
+          maxLength: 255
+          description: "Preferred method for multi-factor authentication contact."
+          example: "Mobile"
+        userAccountStatus:
+          type: string
+          maxLength: 256
+          description: "User account status, e.g., Active or Inactive."
+          enum:
+            - ACTIVE
+            - INACTIVE
+            - DISABLED
+          example: "ACTIVE"
+
+    CreateUserRequest:
+      allOf:
+        - $ref: "#/components/schemas/BaseUserRequest"
+        - type: object
+          required:
+            - userType
+            - userAccountStatus
+            - primaryRoles
+          additionalProperties: false
+
+    UpdateUserRequest:
+      allOf:
+        - $ref: "#/components/schemas/BaseUserRequest"
+        - type: object
+          required:
+            - userType
+            - userAccountStatus
+          additionalProperties: false
+
+    GetUserResponse:
+      allOf:
+        - $ref: "#/components/schemas/BaseUserRequest"
+        - type: object
+          additionalProperties: false
+          properties:
+            id:
+              type: string
+              format: uuid
+              description: "Unique identifier of the user to be fetched."
+              example: "123e4567-e89b-12d3-a456-426614174000"
+            secondaryRoles:
+              $ref: "#/components/schemas/SecondaryRoles"
+            lastAuthenticatedAt:
+              type: string
+              format: date-time
+              nullable: true
+              description: "Timestamp when the user was last successfully authenticated."
+              example: "2023-12-31T12:00:00Z"
+            createdAt:
+              type: string
+              format: date-time
+              maxLength: 100
+              description: "Timestamp when the user was created."
+              example: "2023-12-31T12:00:00Z"
+            updatedAt:
+              type: string
+              format: date-time
+              maxLength: 100
+              description: "Timestamp when the user information was last updated."
+              example: "2024-01-10T14:30:00Z"
+          required:
+            - id
+            - createdAt
+    UserPermissionsResponse:
+      type: object
+      additionalProperties: false
+      description: "Schema for API response containing user's and tablet's organization details along with feature permissions."
+      properties:
+        tabletOrganization:
+          type: object
+          additionalProperties: false
+          description: "The organization associated with the tablet."
+          properties:
+            name:
+              type: string
+              maxLength: 256
+              description: "The name of the tablet's organization."
+              example: "LivaNova"
+            id:
+              type: string
+              format: uuid
+              description: "Unique identifier of the tablet's organization."
+              example: "81a4c706-2a97-49c2-8ec0-5a20a21868f6"
+        userOrganizations:
+          type: array
+          description: "List of organizations the user belongs to."
+          items:
+            $ref: "#/components/schemas/UserOrganizationItem"
+        dataPolicy:
+          type: object
+          additionalProperties: false
+          description: "Policy dictating data sharing and storage conditions."
+          properties:
+            dataSharingEnabled:
+              type: boolean
+              description: "Data sharing is active if the agreement is signed and the current date is within the agreement's valid period; otherwise, it is inactive."
+              example: true
+            retainIndefinitely:
+              type: boolean
+              description: "Data is retained if deleteDataAfterSuccessfulUpload is not enabled and no retention period is specified."
+              example: true
+            automatedDataUpload:
+              type: boolean
+              description: "A flag indicating whether the automated data upload process is currently enabled or not."
+              example: true
+            dataRetentionPeriod:
+              type: object
+              description: "Details about the data retention period including the unit of time and its value."
+              properties:
+                unit:
+                  type: string
+                  enum:
+                    - DAY
+                    - MONTH
+                    - YEAR
+                  description: "The unit of time for the data retention period."
+                value:
+                  type: integer
+                  minimum: 1
+                  description: "The numeric value representing the duration of the data retention period."
+        offlinePin:
+          type: string
+          description: "Information about the hashed offline PIN, represented as a SHA-256 hash."
+          example: "sha256|d3eb9a9233e52948740fbf743b6a25d286fbf5f0aba310e7a1ad6129b2016560"
+        permissions:
+          type: array
+          maxItems: 20
+          description: "Permissions for various features available to the user."
+          items:
+            type: string
+            description: "Allowed feature permissions with version."
+          example:
+            - "IPG_INTERROGATION"
+            - "IPG_PROGRAMMING"
+            - "IPG_DIAGONASTICS"
+        pinSettings:
+          type: object
+          required: [useOfPin, maxOfflineDuration, maxPinUsageDuration]
+          description: "Deprecated - use programmerSecuritySettings instead. Settings for the programmers assigned to the organization."
+          deprecated: true
+          properties:
+            useOfPin:
+              type: boolean
+              description: "Enable or disable PIN reauthentication."
+              example: true
+            maxOfflineDuration:
+              description: "Set a timeframe for all members to use their PIN to log into the clinician app without network connectivity."
+              allOf:
+                - $ref: "#/components/schemas/Duration"
+            maxPinUsageDuration:
+              description: "Set a timeframe to require all members to login with their password to re-authenticate their PIN."
+              allOf:
+                - $ref: "#/components/schemas/Duration"
+        programmerSecuritySettings:
+          type: object
+          description: "Settings for the programmers assigned to the organization."
+          required: [enablePinReauthentication, quickAccessDuration, offlineUseDuration, userSessionInactivityTimeout]
+          properties:
+            enablePinReauthentication:
+              type: boolean
+              description: "Enable or disable PIN reauthentication."
+              example: true
+            offlineUseDuration:
+              description: "Set a timeframe for all members to use their PIN to log into the clinician app without network connectivity."
+              allOf:
+                - $ref: "#/components/schemas/Duration"
+            quickAccessDuration:
+              description: "Set a timeframe to require all members to login with their password to re-authenticate their PIN."
+              allOf:
+                - $ref: "#/components/schemas/Duration"
+            userSessionInactivityTimeout:
+              allOf:
+                - $ref: "#/components/schemas/Duration"
+              description: "Max idle time period for user session before the system automatically logs out."
+        activityTimeout:
+          deprecated: true
+          allOf:
+            - $ref: "#/components/schemas/Duration"
+          description: "Deprecated - use userSessionInactivityTimeout instead. Max idle time period for user session before the system automatically logs out."
+      required:
+        - userOrganizations
+        - dataPolicy
+        - permissions
+        - programmerSecuritySettings
+        - pinSettings
+        - activityTimeout
+
+    ClinicianPortalClaimsResponse:
+      type: object
+      additionalProperties: false
+      description: "Schema for API response containing user claims."
+      properties:
+        userOrganizations:
+          type: array
+          description: "List of organizations the user belongs to."
+          items:
+            $ref: "#/components/schemas/ClinicianPortalUserOrganizationItem"
+        dataPolicy:
+          type: object
+          additionalProperties: false
+          description: "Policy dictating data sharing conditions."
+          properties:
+            dataSharingEnabled:
+              type: boolean
+              description: "Data sharing is active if the agreement is signed and the current date is within the agreement's valid period; otherwise, it is inactive."
+              example: true
+            termsAndConditionsAccepted:
+              type: boolean
+              description: "Terms and conditions acceptance status."
+              example: true
+        permissions:
+          type: array
+          maxItems: 20
+          description: "Permissions for various features available to the user in CPortal."
+          items:
+            type: string
+            description: "Allowed feature permissions on the portal."
+          example:
+            - "ACCOUNT_SELF_SERVICE"
+            - "PATIENT_MANAGEMENT"
+            - "SESSION_REPORT"
+            - "PATIENT_DATA_EXPORT"
+
+    UserName:
+      type: object
+      description: "User's full name."
+      additionalProperties: false
+      properties:
+        firstName:
+          type: string
+          maxLength: 256
+          description: "User's first name."
+          example: "John"
+        lastName:
+          type: string
+          maxLength: 256
+          description: "User's last name."
+          example: "Doe"
+      required:
+        - firstName
+
+    Address:
+      type: object
+      description: "Standard format for a postal address."
+      additionalProperties: false
+      properties:
+        line1:
+          type: string
+          description: "Primary street address."
+          example: "123 Main St"
+        line2:
+          type: string
+          description: "Secondary address information (e.g., apartment, suite number)."
+          example: "Apt 4B"
+          nullable: true # This field can be null if not applicable.
+        city:
+          type: string
+          description: "City of the address."
+          example: "Phoenix"
+        state:
+          type: string
+          description: "State or province of the address."
+          example: "AZ"
+        postalCode:
+          type: string
+          description: "Postal or ZIP code of the address."
+          example: "85001"
+        country:
+          type: string
+          description: "Country of the address as ISO 3166-1 alpha-2 code."
+          example: "USA"
+      required:
+        - line1
+        - city
+        - state
+        - postalCode
+        - country
+
+    PhoneNumbers:
+      type: object
+      description: "User's phone numbers."
+      additionalProperties: false
+      properties:
+        mobile:
+          type: string
+          maxLength: 256
+          description: "Mobile phone number."
+          example: "+1234567890"
+        home:
+          type: string
+          maxLength: 256
+          description: "Home phone number."
+          example: "+0987654321"
+    PrimaryRoles:
+      type: array
+      description: "Primary Roles assigned to the user, including their associated organization."
+      additionalProperties: false
+      items:
+        type: object
+        properties:
+          role:
+            $ref: "#/components/schemas/PrimaryRole"
+          organizationId:
+            type: string
+            description: "The unique identifier for the organization associated with the role."
+            example: "ORG12345"
+        required:
+          - primaryRole
+          - organizationId
+      minItems: 1
+
+    PrimaryRole:
+      type: string
+      description: "The primary role assigned to the user."
+      enum:
+        - FULL_PROGRAMMING_USER
+        - BASIC_PROGRAMMING_USER
+        - NON_PROGRAMMING_USER
+        - LIVANOVA_SALES
+      example: "FULL_PROGRAMMING_USER"
+
+    SecondaryRoles:
+      type: array
+      description: "Secondary Roles assigned to the user, including their associated organization."
+      additionalProperties: false
+      items:
+        type: object
+        properties:
+          role:
+            $ref: "#/components/schemas/SecondaryRole"
+          organizationId:
+            type: string
+            description: "The unique identifier for the organization associated with the role."
+            example: "ORG12345"
+        required:
+          - secondaryRole
+          - organizationId
+
+    SecondaryRole:
+      type: string
+      description: "The secondary role assigned to the user."
+      enum:
+        - ORGANIZATION_ADMIN
+      example: "ORGANIZATION_ADMIN"
+
+    TrainingRecords:
+      type: object
+      additionalProperties: false
+      description: "Details about the user's training status."
+      properties:
+        isTrained:
+          type: boolean
+          description: "Indicates if the user is trained."
+          example: true
+        trainingCompletionDate:
+          type: string
+          format: date-time
+          description: "Date when training was completed."
+          example: "2025-01-15T10:00:00Z"
+        appName:
+          type: string
+          maxLength: 256
+          description: The name of the application the training is related to."
+          example: APP_NAME
+        appVersion:
+          type: string
+          maxLength: 256
+          description: "Version of the application used for training."
+          example: "V2.0"
+    UserOrganizationItem:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          maxLength: 256
+          description: "The name of the user's organization."
+          example: "Mayo B"
+        id:
+          type: string
+          format: uuid
+          description: "Unique identifier of the user's organization."
+          example: "81a4c706-2a97-49c2-8ec0-5a20a21868f6"
+        primaryRole:
+          $ref: "#/components/schemas/PrimaryRole"
+    ClinicianPortalUserOrganizationItem:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          maxLength: 256
+          description: "The name of the user's organization."
+          example: "Mayo B"
+        organizationId:
+          type: string
+          format: uuid
+          description: "Unique identifier of the user's organization."
+          example: "81a4c706-2a97-49c2-8ec0-5a20a21868f6"
+        userId:
+          type: string
+          format: uuid
+          description: "Unique identifier of the user."
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        primaryRole:
+          $ref: "#/components/schemas/PrimaryRole"
+        secondaryRole:
+          $ref: "#/components/schemas/SecondaryRole"
+      required:
+        - name
+        - organizationId
+        - userId
+        - primaryRole
+
+    UserListItem:
+      type: object
+      required:
+        - id
+        - fullName
+        - primaryRole
+        - userAccountStatus
+        - trainingRecords
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: "Unique identifier of the user."
+        fullName:
+          type: string
+          description: "Concatenation of first and last name."
+          example: "Alice Johnson"
+        lastAuthenticatedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: "Timestamp of the user's most recent authentication."
+        primaryRole:
+          type: string
+          description: "Primary role of the user in the organization."
+          example: "FULL_PROGRAMMING_USER"
+          enum:
+            - FULL_PROGRAMMING_USER
+            - BASIC_PROGRAMMING_USER
+            - NON_PROGRAMMING_USER
+            - LIVANOVA_SALES
+        userAccountStatus:
+          type: string
+          enum: [PENDING, ACTIVE, LOCKED, SUSPENDED, DISABLED]
+          description: "Current account status of the user."
+        trainingRecords:
+          $ref: "#/components/schemas/TrainingRecords"
+
+    UserListResponse:
+      type: object
+      required:
+        - items
+        - meta
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserListItem"
+        meta:
+          type: object
+          required:
+            - currentPage
+            - totalPages
+            - totalItems
+          properties:
+            currentPage:
+              type: integer
+            totalPages:
+              type: integer
+            totalItems:
+              type: integer
+
+    LogoutRequest:
+      type: object
+      required:
+        - idToken
+      properties:
+        idToken:
+          type: string
+          description: Auth0 ID token used to initiate logout
+
+    Duration:
+      type: object
+      required: ["unit", "value"]
+      properties:
+        unit:
+          type: string
+          description: "Unit of the time ex. day/hour/minute"
+          example: "hour"
+        value:
+          type: integer
+          description: "Time unit value"
+          example: 1
+
+    Session:
+      type: object
+      additionalProperties: false
+      description: "Session information for a user."
+      required: ["sessionId", "auth0UserId", "organizationId"]
+      properties:
+        sessionId:
+          type: string
+          maxLength: 256
+          description: "Unique identifier for the session."
+          example: "session1234567890"
+        auth0UserId:
+          type: string
+          maxLength: 256
+          description: "Unique identifier for the Auth0 user."
+          example: "auth0|67a0dab42415e5dee412d8c1"
+        organizationId:
+          type: string
+          format: uuid
+          description: "Unique identifier for the organization."
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        lastUserAgent:
+          type: string
+          maxLength: 256
+          description: "User-Agent header value."
+          example: "Mozilla/5.0 (Linux; Android 13; SM-T638U Build/TP1A.220624.014; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/132.0.6834.166 Safari/537.36 LivaNova-M3100/2.0 (Android 13; SM-T638U)"
+        lastIpAddress:
+          type: string
+          maxLength: 256
+          description: "Last known IP address of the user."
+          example: "195.56.119.209"
+        lastInteractedAt:
+          type: string
+          format: date-time
+          description: "Timestamp of the last interaction."
+          example: "2023-12-31T12:00:00Z"
+    SessionList:
+      type: array
+      description: "List of session information for a user."
+      items:
+        $ref: "#/components/schemas/Session"
+
+    InviteContactResponse:
+      type: object
+      required: ["email", "status", "details"]
+      properties:
+        email:
+          type: string
+          description: The email of the contact processed.
+          example: jane.doe@example.com
+        status:
+          type: string
+          description: Status of the processing for this contact (success or error).
+          enum:
+            - SUCCESS
+            - ERROR
+          example: ERROR
+        details:
+          type: array
+          description: Additional information about the processing or error.
+          items:
+            $ref: "../../lib/commonResponses.yml#/components/schemas/ErrorInfo"
+
+    PinStatusResponse:
+      type: object
+      required: ["userId", "pinStatus"]
+      properties:
+        userId:
+          type: string
+          format: uuid
+          description: "Unique identifier of the user."
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        pinStatus:
+          type: string
+          enum: [configured, unconfigured]
+          description: PIN status of the user.
+          example: "configured"
+
+    PinConfigureRequest:
+      type: object
+      properties:
+        pin:
+          type: string
+          description: Valid 6-digit numeric PIN.
+          example: "123456"
+      required:
+        - pin
+
+    PinChangeRequest:
+      type: object
+      properties:
+        oldPin:
+          type: string
+          description: The user’s current PIN for authentication.
+          example: "123456"
+        newPin:
+          type: string
+          description: Valid 6-digit numeric PIN to replace the current PIN.
+          example: "654321"
+      required:
+        - oldPin
+        - newPin
+
+    WebhookPayload:
+      type: object
+      description: Payload for Auth0 webhook events.
+      properties:
+        log_id:
+          type: string
+          description: Unique ID of the log event.
+        data:
+          type: object
+          description: The main event body containing event data.
+          properties:
+            date:
+              type: string
+              format: date-time
+              description: The date and time of the event.
+            type:
+              type: string
+              description: The type of event (e.g., `limit_wc` for lock, `scpr` for unlock).
+            description:
+              type: string
+              description: A human-readable description of the event.
+            client_id:
+              type: string
+              description: Auth0 client ID associated with the event.
+            client_name:
+              type: string
+              description: Auth0 client name.
+            ip:
+              type: string
+              format: ipv6
+              description: IP address from which the event originated.
+            user_agent:
+              type: string
+              description: User agent string of the request.
+            details:
+              type: object
+              description: Detailed information about the request and response.
+              properties:
+                request:
+                  type: object
+                  properties:
+                    method:
+                      type: string
+                    path:
+                      type: string
+                    query:
+                      type: object
+                    userAgent:
+                      type: string
+                    body:
+                      type: object
+                      additionalProperties: true
+                    channel:
+                      type: string
+                    ip:
+                      type: string
+                    auth:
+                      type: object
+                      properties:
+                        user:
+                          type: object
+                          properties:
+                            user_id:
+                              type: string
+                            name:
+                              type: string
+                            email:
+                              type: string
+                        strategy:
+                          type: string
+                        credentials:
+                          type: object
+                response:
+                  type: object
+                  properties:
+                    statusCode:
+                      type: integer
+                    body:
+                      type: object
+                      additionalProperties: true
+            user_id:
+              type: string
+              description: User's unique ID in Auth0.
+            $event_schema:
+              type: object
+            tenant_name:
+              type: string
+              description: Tenant associated with the event.
+
+    OrganizationSettingsResponse:
+      type: object
+      required:
+        - currentNumberOfAdmins
+      properties:
+        currentNumberOfAdmins:
+          type: integer
+          example: 1
+          description: The total number of Admin Users in the specified Organization.
+        maxAllowedNumberOfAdmins:
+          type: integer
+          example: 2
+          description: The max number of Admin Users allowed for the specified Organization.
