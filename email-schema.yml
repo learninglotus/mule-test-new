@@ -1,0 +1,110 @@
+openapi: 3.0.3
+info:
+  title: Email Service API (DRAFT)
+  description: API for sending onboarding emails using SendGrid.
+  version: 0.1.0
+  contact:
+    name: API Support Team
+    email: apiSupportTeam@lvnv.com
+    url: https://www.lvnv.com/support
+
+tags:
+  - name: Email
+    description: Operations for sending onboarding and transactional emails
+
+servers:
+  $ref: "../../lib/servers.yml#/allServers"
+
+security:
+  - bearerAuth: []
+
+paths:
+  /v1/email/send/users/{userId}:
+    post:
+      summary: Send onboarding email to user
+      description: Sends onboarding email for the user across specified organizations using SendGrid.
+      operationId: sendOnboardingEmail
+      tags:
+        - Email
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendOnboardingEmailRequest"
+      responses:
+        "202":
+          description: Email successfully queued for delivery
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SendOnboardingEmailResponse"
+        "400": { $ref: "../../lib/commonResponses.yml#/components/responses/BadRequest" }
+        "401": { $ref: "../../lib/commonResponses.yml#/components/responses/Unauthorized" }
+        "403": { $ref: "../../lib/commonResponses.yml#/components/responses/Forbidden" }
+        "429": { $ref: "../../lib/commonResponses.yml#/components/responses/TooManyRequests" }
+        "500": { $ref: "../../lib/commonResponses.yml#/components/responses/InternalServerError" }
+
+components:
+  securitySchemes:
+    $ref: "../../lib/securitySchemes.yml#/securitySchemes"
+
+  schemas:
+    SendOnboardingEmailRequest:
+      type: object
+      properties:
+        templateName:
+          type: string
+          enum:
+            - organization-onboarding
+          description: Name of the email template to use (must match SendGrid template).
+        organizations:
+          type: array
+          items:
+            type: string
+            description: Organization ID
+          minItems: 1
+          description: List of organization IDs to include in the email context.
+      required:
+        - templateName
+        - organizations
+      example:
+        templateName: organization-onboarding
+        organizations:
+          - "63e55304-0c0c-47ec-973a-e75bcbdbf1c0"
+          - "d2f8b1c4-3e5a-4f8b-9c0d-7e1f2b3c4d5e"
+
+    SendOnboardingEmailResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: Email queued for delivery
+        messageId:
+          type: string
+          format: uuid
+          description: Unique identifier of the queued email
+
+    ErrorResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        details:
+          type: array
+          items:
+            type: string
+      example:
+        code: 400
+        message: Invalid input payload
+        details:
+          - organizations must not be empty
