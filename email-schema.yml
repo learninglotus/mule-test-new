@@ -1,7 +1,10 @@
-openapi: 3.0.3
+openapi: 3.0.0
 info:
   title: Email Service API (DRAFT)
-  description: API for sending onboarding emails using SendGrid.
+  description: |
+    Provides capabilities for sending various types of emails, initially focusing on
+    onboarding emails for users. This service integrates with SendGrid for email delivery.
+    Future enhancements may include other transactional email types.
   version: 0.1.0
   contact:
     name: API Support Team
@@ -13,26 +16,29 @@ tags:
     description: Operations for sending onboarding and transactional emails
 
 servers:
-  $ref: "../../lib/servers.yml#/allServers"
+  - url: https://prod.api.example.com/email
+    description: Production server
+  - url: https://staging.api.example.com/email
+    description: Staging server
+  - url: https://dev.api.example.com/email
+    description: Development server
 
 security:
-  - bearerAuth: []
+  - ServiceBearerAuth: []
 
 paths:
   /v1/email/send/users/{userId}:
     post:
       summary: Send onboarding email to user
-      description: Sends onboarding email for the user across specified organizations using SendGrid.
+      description: |
+        Initiates the process of sending a templated onboarding email to a specific user.
+        The email content can be customized based on the user's organizations.
+        This operation relies on SendGrid for the actual email dispatch.
       operationId: sendOnboardingEmail
       tags:
         - Email
       parameters:
-        - name: userId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
+        - $ref: '#/components/parameters/UserIdPathParam'
       requestBody:
         required: true
         content:
@@ -54,7 +60,21 @@ paths:
 
 components:
   securitySchemes:
-    $ref: "../../lib/securitySchemes.yml#/securitySchemes"
+    ServiceBearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: "Bearer token for service authorization. The token is typically a JWT."
+
+  parameters:
+    UserIdPathParam:
+      name: userId
+      in: path
+      required: true
+      description: Unique identifier of the user.
+      schema:
+        type: string
+        format: uuid
 
   schemas:
     SendOnboardingEmailRequest:
@@ -64,14 +84,14 @@ components:
           type: string
           enum:
             - organization-onboarding
-          description: Name of the email template to use (must match SendGrid template).
+          description: "Name of the email template to use. This must correspond to an existing template in SendGrid."
         organizations:
           type: array
           items:
             type: string
-            description: Organization ID
+            description: "The unique identifier for an organization."
           minItems: 1
-          description: List of organization IDs to include in the email context.
+          description: "A list of organization IDs to which the onboarding email pertains. Context for these organizations will be included in the email."
       required:
         - templateName
         - organizations
@@ -86,6 +106,7 @@ components:
       properties:
         message:
           type: string
+          description: Confirmation message indicating the email has been queued.
           example: Email queued for delivery
         messageId:
           type: string
@@ -94,15 +115,20 @@ components:
 
     ErrorResponse:
       type: object
+      description: "A standard error response structure."
       properties:
         code:
           type: integer
+          description: "The HTTP status code or an internal error code."
         message:
           type: string
+          description: "A human-readable message providing details about the error."
         details:
           type: array
           items:
             type: string
+            description: "An individual error detail or validation message."
+          description: "An optional list of more specific error messages or validation issues."
       example:
         code: 400
         message: Invalid input payload
